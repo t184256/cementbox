@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Unlicense
+set -Eeuo pipefail; shopt -s inherit_errexit
+
+# Sets up Claude Code on a remote host.
+
+VM_HOSTNAME=dumpster-fire  # see `Configuration for SSH vsock access`
+VM_USERNAME=sloppy
+
+MUX=$HOME/.ssh/.cementbox-mux-$$
+SSH="ssh -oBatchMode=yes -S $MUX"
+SSH_MUX="$SSH -fM -oControlPersist=60 $VM_USERNAME@$VM_HOSTNAME true"
+
+socat_pid=''
+# shellcheck disable=SC2329
+cleanup() {
+  set +e
+  [[ -n "$socat_pid" ]] && kill "$socat_pid"
+  [[ -n "$socat_pid" ]] && kill -9 "$socat_pid"
+  [[ -e "$MUX" ]] && $SSH -O exit "$VM_USERNAME@$VM_HOSTNAME"
+  [[ -e "$MUX" ]] && rm -f "$MUX"
+}
+trap 'cleanup' EXIT
+
+# shellcheck disable=SC2016
+if ! $SSH_MUX; then
+  if $SSH "root@$VM_HOSTNAME" true </dev/null; then
+    echo 2>&1 'can SSH as root, good...'
+  else
+    echo 2>&1 'cannot SSH as root either. something went wrong. reinstall?'
+    exit 1
+  fi
+  # configure SSH'ing in to a sudoer
+  $SSH "root@$VM_HOSTNAME" "set -xEeuo pipefail; shopt -s inherit_errexit
+    id $VM_USERNAME || useradd -m -s /bin/bash $VM_USERNAME
+    id $VM_USERNAME | grep 1000
+    [[ -e /home/$VM_USERNAME/.ssh ]] || \
+      install -m 700 -o 1000 -g 1000 -d /home/$VM_USERNAME/.ssh
+    [[ -e /home/$VM_USERNAME/.ssh/authorized_keys ]] || \
+      install -m 600 -o 1000 -g 1000 \
+        /root/.ssh/authorized_keys \
+        /home/$VM_USERNAME/.ssh/authorized_keys
+    usermod -a -G wheel $VM_USERNAME
+    sed -i 's|^%wheel.*|%wheel ALL=(ALL:ALL) NOPASSWD:SETENV: ALL|' \
+      /etc/sudoers
+  "
+  if $SSH "$VM_USERNAME@$VM_HOSTNAME" true </dev/null; then
+    echo 2>&1 "can now SSH as $VM_USERNAME, good..."
+  else
+    echo 2>&1 "cannot SSH as $VM_USERNAME, something went wrong!"
+    exit 1
+  fi
+  $SSH_MUX
+fi
+
+if $SSH "$VM_USERNAME@$VM_HOSTNAME" sudo -n true </dev/null; then
+  echo 2>&1 "can SSH and sudo as $VM_USERNAME, good..."
+else
+  echo 2>&1 "cannot SSH and sudo as $VM_USERNAME, something went wrong!"
+  exit 1
+fi
+
+# install claude with NPM like it's 20th century or something
+# the VM is disposable anyway
+PKGS=(
+  sshfs git-core bubblewrap
+  git-core nodejs-npm nodejs-full-i18n google-cloud-cli
+)
+# shellcheck disable=SC2145
+$SSH "$VM_USERNAME@$VM_HOSTNAME" "set -xEeuo pipefail; shopt -s inherit_errexit
+  [[ -e /etc/yum.repos.d/google-cloud-sdk.repo ]] || \
+    sudo tee /etc/yum.repos.d/google-cloud-sdk.repo << 'GCREPO'
+[google-cloud-cli]
+name=Google Cloud CLI
+baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+GCREPO
+
+  rpm -q ${PKGS[*]} || sudo dnf -y install ${PKGS[*]}
+
+  [[ -e /etc/profile.d/claude.sh ]] || \
+    sudo tee /etc/profile.d/claude.sh << 'CLAUDEENV'
+export CLAUDE_CODE_USE_VERTEX=1
+export CLOUD_ML_REGION=us-east5
+export ANTHROPIC_VERTEX_PROJECT_ID=itpc-gcp-core-pe-eng-claude
+CLAUDEENV
+
+  if [[ ! -e ~/.git/config ]]; then
+    git config --global user.email $(git config --global user.email)
+    git config --global user.name $(git config --global user.name)
+  fi
+
+  if ! command -v claude; then
+    npm config set prefix ~/.npm-global
+    npm install -g @anthropic-ai/claude-code
+
+    sudo tee /usr/bin/claude <<\CLAUDEWRAPPER
+#!/bin/bash
+set -Eeuo pipefail; shopt -s inherit_errexit
+mountpoint ~/.remote
+cd ~/workspace
+. /etc/profile.d/claude.sh
+# garbage hygiene: they overwrite ~/.claude.json from a link.
+# fight that nonsense tooth and claw
+[[ ! -e ~/.claude.json && -e ~/.claude/claude.json ]] && \
+  ln -sf ~/.claude/claude.json ~/.claude.json
+~/.npm-global/bin/claude \"\$@\"
+ret=\$?
+[[ ! -L ~/.claude.json && -e ~/.claude.json ]] && \
+  mv ~/.claude.json ~/.claude/claude.json && \
+  ln -sf ~/.claude/claude.json ~/.claude.json
+exit \$ret
+CLAUDEWRAPPER
+    sudo chmod +x /usr/bin/claude
+  fi
+"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Unlicense
+set -Eeuo pipefail; shopt -s inherit_errexit
+
+VM_HOSTNAME=dumpster-fire \
+LIBVIRT_URL=qemu+ssh://spondias/system \
+  ./install-fedora

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Unlicense
+set -Eeuo pipefail; shopt -s inherit_errexit
+
+# Runs Claude Code on a remote host, mounting a few directories over.
+
+VM_HOSTNAME=dumpster-fire  # see `Configuration for SSH vsock access`
+VM_USERNAME=sloppy
+
+command -v socat >/dev/null || sudo dnf install socat
+command -v bwrap >/dev/null || sudo dnf install bubblewrap
+
+mkdir -p ~/.claude
+if ! [[ -e ~/.config/gcloud ]]; then
+  # shellcheck disable=SC2016
+  echo >&2 'You need to `gcloud init`/`gcloud auth` first. Exiting.'
+  exit 1
+fi
+
+CURDIR=$(realpath "$(pwd)")
+if ! grep -qFx "$CURDIR" ~/.claude-allowlist; then
+  echo "$CURDIR is not in ~/.claude-allowlist"
+  read -rp "Are you comfortable sharing its contents with Anthropic [y/N]? " CON
+  if [[ "$CON" != 'y' ]]; then
+    exit 1
+  fi
+  echo "$CURDIR" >> ~/.claude-allowlist
+fi
+
+FINAL_SSH_EXTRA_OPTS=-t \
+  exec ./cementbox \
+    --rw-share "$(pwd)" "/home/$VM_USERNAME/workspace" \
+    --rw-share ~/.claude "/home/$VM_USERNAME/.claude" \
+    --ro-share ~/.config/gcloud "/home/$VM_USERNAME/.config/gcloud" \
+    "$VM_USERNAME@$VM_HOSTNAME" \
+    claude

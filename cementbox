@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Unlicense
+set -Eeuo pipefail; shopt -s inherit_errexit
+
+# Runs an application on a remote host mounting a few directories over.
+
+# Parse arguments
+: "${FINAL_SSH_EXTRA_OPTS:=}"
+
+CUSTOM_SHARES=(); CUSTOM_SHARES_MOUNT_BACK=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rw-share|--ro-share)
+      opt=$1; local=$2; remote=$3
+      [[ "$opt" == '--rw-share' ]] && bwopt='--bind' || bwopt='--ro-bind'
+      CUSTOM_SHARES+=("$bwopt" "$local" "/share/$local")
+      # shellcheck disable=SC2088
+      CUSTOM_SHARES_MOUNT_BACK+=("$bwopt" "~/.remote/$local" "$remote")
+      shift 3
+    ;;
+    *) break ;;
+  esac
+done
+if [[ $# -eq 0 ]]; then
+  echo >&2 "Usage: ${0##*/} \\"
+  echo >&2 "  [--rw-share <local/path> <remote/path>] \\"
+  echo >&2 "  [--ro-share <local/path> <remote/path>] \\"
+  echo >&2 '  [user@]host command [args...]'
+  exit 1
+fi
+SSH_DESTINATION="$1"; shift
+
+# Prepare multiplexed SSH connection and cleanup
+
+MUX=$HOME/.ssh/.offload-mux-$$
+SSH="ssh -oBatchMode=yes -S $MUX"
+SSH_MUX="$SSH -fM -oControlPersist=60 $SSH_DESTINATION true"
+
+socat_pid=''
+# shellcheck disable=SC2329
+cleanup() {
+  set +e
+  [[ -n "$socat_pid" ]] && kill "$socat_pid"
+  [[ -n "$socat_pid" ]] && kill -9 "$socat_pid"
+  [[ -e "$MUX" ]] && $SSH -O exit "$SSH_DESTINATION"
+  [[ -e "$MUX" ]] && rm -f "$MUX"
+}
+trap 'cleanup' EXIT
+
+$SSH_MUX
+
+# Do the thing:
+# * mkdir ~/.remote inside the VM
+# * bubblewrap sftp-server, merging multiple dirs into one it'll export
+# * run it socat'd together to a remote sshfs process in the background
+# * run the desired process with bind mounts from ~/.remote to destinations
+
+SFTP_SERVER=(
+  bwrap
+  --dir /share
+  "${CUSTOM_SHARES[@]}"
+  # mounts needed for the sftp-server to work
+  --ro-bind /etc/passwd /etc/passwd
+  --ro-bind /usr/libexec/openssh /usr/libexec/openssh
+  --ro-bind /usr/lib /usr/lib
+  --ro-bind /lib64 /lib64
+  --dev-bind /dev/null /dev/null
+  --chdir /share
+  --unshare-all
+  --die-with-parent
+  /usr/libexec/openssh/sftp-server
+)
+# shellcheck disable=SC2088
+SSHFS=(
+  sshfs
+    -o passive
+    # I trust the network between my boxes to be fast and reliable
+    -o auto_unmount
+    -o dir_cache=no
+    -o no_readahead
+    -o sshfs_sync
+    -o sync_readdir
+    :/share
+    '~/.remote'
+)
+
+$SSH "$SSH_DESTINATION" 'mkdir -p ~/.remote'
+socat \
+  "EXEC:${SFTP_SERVER[*]}" \
+  "EXEC:$SSH '$SSH_DESTINATION' '${SSHFS[*]}'" \
+  &
+socat_pid=$!
+$SSH "$SSH_DESTINATION" "
+  for t in .1 .2 .4 .8 1.6 3.2; do
+    mountpoint ~/.remote >/dev/null && break;
+    echo \"waiting \$t seconds for ~/.remote...\"
+    sleep \$t
+  done
+"
+
+set -e
+$SSH ${FINAL_SSH_EXTRA_OPTS:+"$FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
+  "bwrap --dev-bind / / ${CUSTOM_SHARES_MOUNT_BACK[*]} -- $*"
+ssh_retcode=$?
+kill $socat_pid >/dev/null
+wait $socat_pid
+exit $ssh_retcode
