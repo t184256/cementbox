@@ -89,8 +89,8 @@ export ANTHROPIC_VERTEX_PROJECT_ID=itpc-gcp-core-pe-eng-claude
 CLAUDEENV
 
   if [[ ! -e ~/.git/config ]]; then
-    git config --global user.email $(git config --global user.email)
-    git config --global user.name $(git config --global user.name)
+    git config --global user.email '$(git config --global user.email)'
+    git config --global user.name '$(git config --global user.name)'
   fi
 
   if ! command -v claude; then
