@@ -99,8 +99,9 @@ $SSH "$SSH_DESTINATION" "
 "
 
 set -e
+REQUOTED_ARGS=$(printf '%q ' "$@")
 $SSH ${FINAL_SSH_EXTRA_OPTS:+"$FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
-  "bwrap --dev-bind / / ${CUSTOM_SHARES_MOUNT_BACK[*]} -- $*"
+  "bwrap --dev-bind / / ${CUSTOM_SHARES_MOUNT_BACK[*]} -- $REQUOTED_ARGS"
 ssh_retcode=$?
 kill $socat_pid >/dev/null
 wait $socat_pid

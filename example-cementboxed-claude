@@ -33,4 +33,6 @@ FINAL_SSH_EXTRA_OPTS=-t \
     --rw-share ~/.claude "/home/$VM_USERNAME/.claude" \
     --ro-share ~/.config/gcloud "/home/$VM_USERNAME/.config/gcloud" \
     "$VM_USERNAME@$VM_HOSTNAME" \
-    claude "$@"
+    claude \
+      --append-system-prompt "You're running on a disposable Fedora system." \
+      "$@"
