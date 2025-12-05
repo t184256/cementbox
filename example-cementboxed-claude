@@ -27,6 +27,10 @@ if ! grep -qFx "$CURDIR" ~/.claude-allowlist; then
   echo "$CURDIR" >> ~/.claude-allowlist
 fi
 
+APPEND_SYSPROMPT='You are running on a disposable Fedora system.'
+APPEND_SYSPROMPT+=' Install software with `run0 --via-shell dnf -y install`.'
+APPEND_SYSPROMPT+=' Use run0 to elevate permissions instead of sudo.'
+
 FINAL_SSH_EXTRA_OPTS=-t \
   exec ./cementbox \
     --rw-share "$(pwd)" "/home/$VM_USERNAME/workspace" \
@@ -34,5 +38,5 @@ FINAL_SSH_EXTRA_OPTS=-t \
     --ro-share ~/.config/gcloud "/home/$VM_USERNAME/.config/gcloud" \
     "$VM_USERNAME@$VM_HOSTNAME" \
     claude \
-      --append-system-prompt "You're running on a disposable Fedora system." \
+      --append-system-prompt "$APPEND_SYSPROMPT" \
       "$@"

@@ -30,7 +30,7 @@ if ! $SSH_MUX; then
     echo 2>&1 'cannot SSH as root either. something went wrong. reinstall?'
     exit 1
   fi
-  # configure SSH'ing in to a sudoer
+  # configure SSH'ing in to a passwordless "sudoer" (through run0)
   $SSH "root@$VM_HOSTNAME" "set -xEeuo pipefail; shopt -s inherit_errexit
     id $VM_USERNAME || useradd -m -s /bin/bash $VM_USERNAME
     id $VM_USERNAME | grep 1000
@@ -43,6 +43,16 @@ if ! $SSH_MUX; then
     usermod -a -G wheel $VM_USERNAME
     sed -i 's|^%wheel.*|%wheel ALL=(ALL:ALL) NOPASSWD:SETENV: ALL|' \
       /etc/sudoers
+    rpm -q polkit || dnf -y install polkit
+    tee /etc/polkit-1/rules.d/10-systemd-nopasswd.rules <<\\RUN0CONF
+polkit.addRule(function(action, subject) {
+    if (action.id == \"org.freedesktop.systemd1.manage-units\") {
+        if (subject.isInGroup(\"wheel\")) {
+            return polkit.Result.YES;
+        }
+    }
+});
+RUN0CONF
   "
   if $SSH "$VM_USERNAME@$VM_HOSTNAME" true </dev/null; then
     echo 2>&1 "can now SSH as $VM_USERNAME, good..."
@@ -53,10 +63,10 @@ if ! $SSH_MUX; then
   $SSH_MUX
 fi
 
-if $SSH "$VM_USERNAME@$VM_HOSTNAME" sudo -n true </dev/null; then
-  echo 2>&1 "can SSH and sudo as $VM_USERNAME, good..."
+if $SSH "$VM_USERNAME@$VM_HOSTNAME" run0 true </dev/null; then
+  echo 2>&1 "can SSH and run0 as $VM_USERNAME, good..."
 else
-  echo 2>&1 "cannot SSH and sudo as $VM_USERNAME, something went wrong!"
+  echo 2>&1 "cannot SSH and run0 as $VM_USERNAME, something went wrong!"
   exit 1
 fi
 
@@ -69,7 +79,7 @@ PKGS=(
 # shellcheck disable=SC2145
 $SSH "$VM_USERNAME@$VM_HOSTNAME" "set -xEeuo pipefail; shopt -s inherit_errexit
   [[ -e /etc/yum.repos.d/google-cloud-sdk.repo ]] || \
-    sudo tee /etc/yum.repos.d/google-cloud-sdk.repo << 'GCREPO'
+    run0 tee /etc/yum.repos.d/google-cloud-sdk.repo << 'GCREPO'
 [google-cloud-cli]
 name=Google Cloud CLI
 baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
@@ -79,10 +89,11 @@ repo_gpgcheck=0
 gpgkey=https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 GCREPO
 
-  rpm -q ${PKGS[*]} || sudo dnf -y install ${PKGS[*]}
+  rpm -q ${PKGS[*]} || \
+    run0 -i dnf -y install --setopt=install_weak_deps=False ${PKGS[*]}
 
   [[ -e /etc/profile.d/claude.sh ]] || \
-    sudo tee /etc/profile.d/claude.sh << 'CLAUDEENV'
+    run0 tee /etc/profile.d/claude.sh << 'CLAUDEENV'
 export CLAUDE_CODE_USE_VERTEX=1
 export CLOUD_ML_REGION=us-east5
 export ANTHROPIC_VERTEX_PROJECT_ID=itpc-gcp-core-pe-eng-claude
@@ -97,7 +108,7 @@ CLAUDEENV
     npm config set prefix ~/.npm-global
     npm install -g @anthropic-ai/claude-code
 
-    sudo tee /usr/bin/claude <<\CLAUDEWRAPPER
+    run0 tee /usr/bin/claude <<\CLAUDEWRAPPER
 #!/bin/bash
 set -Eeuo pipefail; shopt -s inherit_errexit
 mountpoint ~/.remote
@@ -114,6 +125,6 @@ ret=\$?
   ln -sf ~/.claude/claude.json ~/.claude.json
 exit \$ret
 CLAUDEWRAPPER
-    sudo chmod +x /usr/bin/claude
+    run0 chmod +x /usr/bin/claude
   fi
 "
