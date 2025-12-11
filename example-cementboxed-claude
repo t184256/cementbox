@@ -35,6 +35,7 @@ FINAL_SSH_EXTRA_OPTS=-t \
   exec ./cementbox \
     --rw-share "$(pwd)" "/home/$VM_USERNAME/workspace" \
     --rw-share ~/.claude "/home/$VM_USERNAME/.claude" \
+    --tmpfs "/home/$VM_USERNAME/.claude/debug" \
     --ro-share ~/.config/gcloud "/home/$VM_USERNAME/.config/gcloud" \
     "$VM_USERNAME@$VM_HOSTNAME" \
     claude \
