@@ -73,7 +73,7 @@ fi
 # install claude with NPM like it's 20th century or something
 # the VM is disposable anyway
 PKGS=(
-  sshfs git-core bubblewrap
+  fuse-sshfs git-core bubblewrap
   git-core nodejs-npm nodejs-full-i18n google-cloud-cli
 )
 # shellcheck disable=SC2145
