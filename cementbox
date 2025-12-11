@@ -41,8 +41,8 @@ socat_pid=''
 # shellcheck disable=SC2329
 cleanup() {
   set +e
-  [[ -n "$socat_pid" ]] && kill "$socat_pid"
-  [[ -n "$socat_pid" ]] && kill -9 "$socat_pid"
+  [[ -n "$socat_pid" ]] && kill "$socat_pid" 2>/dev/null
+  [[ -n "$socat_pid" ]] && kill -9 "$socat_pid" 2>/dev/null
   [[ -e "$MUX" ]] && $SSH -O exit "$SSH_DESTINATION"
   [[ -e "$MUX" ]] && rm -f "$MUX"
 }
@@ -105,6 +105,6 @@ set +e
 $SSH ${FINAL_SSH_EXTRA_OPTS:+"$FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
   "bwrap --dev-bind / / ${BWRAP_OPTIONS[*]} -- $REQUOTED_ARGS"
 ssh_retcode=$?
-kill $socat_pid >/dev/null
-wait $socat_pid
+kill $socat_pid 2>/dev/null
+wait $socat_pid 2>/dev/null
 exit $ssh_retcode
