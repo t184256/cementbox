@@ -98,8 +98,8 @@ $SSH "$SSH_DESTINATION" "
   done
 "
 
-set -e
 REQUOTED_ARGS=$(printf '%q ' "$@")
+set +e
 $SSH ${FINAL_SSH_EXTRA_OPTS:+"$FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
   "bwrap --dev-bind / / ${CUSTOM_SHARES_MOUNT_BACK[*]} -- $REQUOTED_ARGS"
 ssh_retcode=$?
