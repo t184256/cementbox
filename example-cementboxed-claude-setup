@@ -118,6 +118,7 @@ cd ~/workspace
 # fight that nonsense tooth and claw
 [[ ! -e ~/.claude.json && -e ~/.claude/claude.json ]] && \
   ln -sf ~/.claude/claude.json ~/.claude.json
+set +e
 ~/.npm-global/bin/claude \"\$@\"
 ret=\$?
 [[ ! -L ~/.claude.json && -e ~/.claude.json ]] && \
