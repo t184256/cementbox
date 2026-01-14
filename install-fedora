@@ -89,6 +89,10 @@ setools-console
 %post --interpreter /bin/bash --erroronfail
 (
 set -xEeuo pipefail; shopt -s inherit_errexit
+cat >> /etc/dracut.conf.d/vsock-drivers.conf <<DRI
+add_drivers+=" vmw_vsock_virtio_transport vmw_vsock_vmci_transport "
+DRI
+
 dnf -y makecache 2>/dev/null
 dnf -y update
 dnf -y clean packages
