@@ -6,6 +6,7 @@ set -Eeuo pipefail; shopt -s inherit_errexit
 
 # Parse arguments
 : "${FINAL_SSH_EXTRA_OPTS:=}"
+REMOTE_MNT='~/.remote-'$$
 
 CUSTOM_SHARES=(); CUSTOM_SHARES_MOUNT_BACK=(); CUSTOM_TMPFS=()
 while [[ $# -gt 0 ]]; do
@@ -14,8 +15,7 @@ while [[ $# -gt 0 ]]; do
       opt=$1; local=$2; remote=$3
       [[ "$opt" == '--rw-share' ]] && bwopt='--bind' || bwopt='--ro-bind'
       CUSTOM_SHARES+=("$bwopt" "$local" "/share/$local")
-      # shellcheck disable=SC2088
-      CUSTOM_SHARES_MOUNT_BACK+=("$bwopt" "~/.remote/$local" "$remote")
+      CUSTOM_SHARES_MOUNT_BACK+=("$bwopt" "$REMOTE_MNT/$local" "$remote")
       shift 3
     ;;
     --tmpfs) CUSTOM_TMPFS+=('--tmpfs' "$2"); shift 2 ;;
@@ -43,6 +43,7 @@ cleanup() {
   set +e
   [[ -n "$socat_pid" ]] && kill "$socat_pid" 2>/dev/null
   [[ -n "$socat_pid" ]] && kill -9 "$socat_pid" 2>/dev/null
+  [[ -e "$MUX" ]] && $SSH "$SSH_DESTINATION" "rmdir $REMOTE_MNT" 2>/dev/null
   [[ -e "$MUX" ]] && $SSH -O exit "$SSH_DESTINATION"
   [[ -e "$MUX" ]] && rm -f "$MUX"
 }
@@ -51,10 +52,10 @@ trap 'cleanup' EXIT
 $SSH_MUX
 
 # Do the thing:
-# * mkdir ~/.remote inside the VM
+# * mkdir ~/.remote-$$ inside the VM
 # * bubblewrap sftp-server, merging multiple dirs into one it'll export
 # * run it socat'd together to a remote sshfs process in the background
-# * run the desired process with bind mounts from ~/.remote to destinations
+# * run the desired process with bind mounts from ~/.remote-$$ to destinations
 
 SFTP_SERVER=(
   bwrap
@@ -71,7 +72,6 @@ SFTP_SERVER=(
   --die-with-parent
   /usr/libexec/openssh/sftp-server
 )
-# shellcheck disable=SC2088
 SSHFS=(
   sshfs
     -o passive
@@ -82,10 +82,10 @@ SSHFS=(
     -o sshfs_sync
     -o sync_readdir
     :/share
-    '~/.remote'
+    "$REMOTE_MNT"
 )
 
-$SSH "$SSH_DESTINATION" 'mkdir -p ~/.remote'
+$SSH "$SSH_DESTINATION" "mkdir -p $REMOTE_MNT"
 socat \
   "EXEC:${SFTP_SERVER[*]}" \
   "EXEC:$SSH '$SSH_DESTINATION' '${SSHFS[*]}'" \
@@ -93,8 +93,8 @@ socat \
 socat_pid=$!
 $SSH "$SSH_DESTINATION" "
   for t in .1 .2 .4 .8 1.6 3.2; do
-    mountpoint ~/.remote >/dev/null && break;
-    echo \"waiting \$t seconds for ~/.remote...\"
+    mountpoint $REMOTE_MNT >/dev/null && break;
+    echo \"waiting \$t seconds for $REMOTE_MNT...\"
     sleep \$t
   done
 "
