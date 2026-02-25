@@ -81,6 +81,7 @@ SSHFS=(
     -o no_readahead
     -o sshfs_sync
     -o sync_readdir
+    -o allow_other
     :/share
     "$REMOTE_MNT"
 )

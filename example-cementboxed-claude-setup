@@ -92,6 +92,8 @@ GCREPO
   rpm -q ${PKGS[*]} || \
     run0 -i dnf -y install --setopt=install_weak_deps=False ${PKGS[*]}
 
+  echo user_allow_other | run0 tee -a /etc/fuse.conf
+
   [[ -e /etc/profile.d/claude.sh ]] || \
     run0 tee /etc/profile.d/claude.sh << 'CLAUDEENV'
 export CLAUDE_CODE_USE_VERTEX=1
