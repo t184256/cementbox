@@ -38,11 +38,13 @@ SSH="ssh -oBatchMode=yes -S $MUX"
 SSH_MUX="$SSH -fM -oControlPersist=60 $SSH_DESTINATION true"
 
 socat_pid=''
+SFTP_SCRIPT=''
 # shellcheck disable=SC2329
 cleanup() {
   set +e
   [[ -n "$socat_pid" ]] && kill "$socat_pid" 2>/dev/null
   [[ -n "$socat_pid" ]] && kill -9 "$socat_pid" 2>/dev/null
+  [[ -n "$SFTP_SCRIPT" ]] && rm -f "$SFTP_SCRIPT"
   [[ -e "$MUX" ]] && $SSH "$SSH_DESTINATION" "rmdir $REMOTE_MNT" 2>/dev/null
   [[ -e "$MUX" ]] && $SSH -O exit "$SSH_DESTINATION"
   [[ -e "$MUX" ]] && rm -f "$MUX"
@@ -86,9 +88,14 @@ SSHFS=(
     "$REMOTE_MNT"
 )
 
+# mind the EXEC: address length limit, write a temp script for sftp-server
+SFTP_SCRIPT=$(mktemp)
+echo -e "#!/bin/bash\nexec ${SFTP_SERVER[*]}" >> "$SFTP_SCRIPT"
+chmod +x "$SFTP_SCRIPT"
+
 $SSH "$SSH_DESTINATION" "mkdir -p $REMOTE_MNT"
 socat \
-  "EXEC:${SFTP_SERVER[*]}" \
+  "EXEC:$SFTP_SCRIPT" \
   "EXEC:$SSH '$SSH_DESTINATION' '${SSHFS[*]}'" \
   &
 socat_pid=$!
