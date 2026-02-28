@@ -27,6 +27,36 @@ if ! grep -qFx "$CURDIR" ~/.claude-allowlist; then
   echo "$CURDIR" >> ~/.claude-allowlist
 fi
 
+# Git worktrees: .git is a file pointing outside the current dir.
+# Mount the main .git dir at its original path so the pointer resolves.
+EXTRA_WORKTREE=()
+if git rev-parse --git-dir &>/dev/null; then
+  GIT_DIR=$(realpath "$(git rev-parse --git-dir)")
+  GIT_COMMON_DIR=$(realpath \
+    "$(git rev-parse --git-common-dir)")
+  if [[ "$GIT_DIR" != "$GIT_COMMON_DIR" ]]; then
+    if ! grep -qFx "$GIT_COMMON_DIR" ~/.claude-allowlist; then
+      echo "$GIT_COMMON_DIR is not in ~/.claude-allowlist"
+      echo "(needed because $CURDIR is a git worktree)"
+      read -rp \
+        "Are you comfortable sharing its contents with Anthropic [y/N]? " CON
+      if [[ "$CON" != 'y' ]]; then
+        exit 1
+      fi
+      echo "$GIT_COMMON_DIR" >> ~/.claude-allowlist
+    fi
+    # writable overlay on top-level ancestor so bwrap
+    # can create parents for the bind mount
+    GIT_TOP=${GIT_COMMON_DIR#/}
+    GIT_TOP=/${GIT_TOP%%/*}
+    EXTRA_WORKTREE=(
+      --overlay-src "$GIT_TOP"
+      --tmp-overlay "$GIT_TOP"
+      --rw-share "$GIT_COMMON_DIR" "$GIT_COMMON_DIR"
+    )
+  fi
+fi
+
 APPEND_SYSPROMPT='You are running on a disposable Fedora system.'
 APPEND_SYSPROMPT+=' Install software with `run0 --via-shell dnf -y install`.'
 APPEND_SYSPROMPT+=' Use run0 to elevate permissions instead of sudo.'
@@ -34,6 +64,7 @@ APPEND_SYSPROMPT+=' Use run0 to elevate permissions instead of sudo.'
 FINAL_SSH_EXTRA_OPTS=-t \
   exec ./cementbox \
     --rw-share "$(pwd)" "/home/$VM_USERNAME/workspace" \
+    "${EXTRA_WORKTREE[@]}" \
     --rw-share ~/.claude "/home/$VM_USERNAME/.claude" \
     --tmpfs "/home/$VM_USERNAME/.claude/debug" \
     --ro-share ~/.config/gcloud "/home/$VM_USERNAME/.config/gcloud" \
