@@ -8,18 +8,18 @@ set -Eeuo pipefail; shopt -s inherit_errexit
 : "${FINAL_SSH_EXTRA_OPTS:=}"
 REMOTE_MNT='~/.remote-'$$
 
-CUSTOM_SHARES=(); CUSTOM_SHARES_MOUNT_BACK=(); CUSTOM_TMPFS=(); CUSTOM_DIRS=()
+CUSTOM_SHARES=(); BWRAP_OPTIONS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rw-share|--ro-share)
       opt=$1; local=$2; remote=$3
       [[ "$opt" == '--rw-share' ]] && bwopt='--bind' || bwopt='--ro-bind'
       CUSTOM_SHARES+=("$bwopt" "$local" "/share/$local")
-      CUSTOM_SHARES_MOUNT_BACK+=("$bwopt" "$REMOTE_MNT/$local" "$remote")
+      BWRAP_OPTIONS+=("$bwopt" "$REMOTE_MNT/$local" "$remote")
       shift 3
     ;;
-    --dir) CUSTOM_DIRS+=('--dir' "$2"); shift 2 ;;
-    --tmpfs) CUSTOM_TMPFS+=('--tmpfs' "$2"); shift 2 ;;
+    --dir|--tmpfs|--overlay-src|--tmp-overlay)
+      BWRAP_OPTIONS+=("$1" "$2"); shift 2 ;;
     *) break ;;
   esac
 done
@@ -109,11 +109,6 @@ $SSH "$SSH_DESTINATION" "
 "
 
 REQUOTED_ARGS=$(printf '%q ' "$@")
-BWRAP_OPTIONS=(
-  "${CUSTOM_DIRS[@]}"
-  "${CUSTOM_SHARES_MOUNT_BACK[@]}"
-  "${CUSTOM_TMPFS[@]}"
-)
 set +e
 $SSH ${FINAL_SSH_EXTRA_OPTS:+"$FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
   "bwrap --dev-bind / / ${BWRAP_OPTIONS[*]} -- $REQUOTED_ARGS"
