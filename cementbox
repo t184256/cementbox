@@ -18,7 +18,7 @@ while [[ $# -gt 0 ]]; do
       BWRAP_OPTIONS+=("$bwopt" "$REMOTE_MNT/$local" "$remote")
       shift 3
     ;;
-    --dir|--tmpfs|--overlay-src|--tmp-overlay)
+    --dir|--tmpfs|--overlay-src|--tmp-overlay|--chdir)
       BWRAP_OPTIONS+=("$1" "$2"); shift 2 ;;
     *) break ;;
   esac
