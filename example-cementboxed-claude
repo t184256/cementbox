@@ -61,7 +61,7 @@ APPEND_SYSPROMPT='You are running on a disposable Fedora system.'
 APPEND_SYSPROMPT+=' Install software with `run0 --via-shell dnf -y install`.'
 APPEND_SYSPROMPT+=' Use run0 to elevate permissions instead of sudo.'
 
-FINAL_SSH_EXTRA_OPTS=-t \
+CEMENTBOX_FINAL_SSH_EXTRA_OPTS=-t \
   exec ./cementbox \
     --rw-share "$(pwd)" "/home/$VM_USERNAME/workspace" \
     "${EXTRA_WORKTREE[@]}" \
