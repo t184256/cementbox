@@ -5,8 +5,12 @@ set -Eeuo pipefail; shopt -s inherit_errexit
 # Runs an application on a remote host mounting a few directories over.
 
 # Parse arguments
-: "${FINAL_SSH_EXTRA_OPTS:=}"
+: "${CEMENTBOX_FINAL_SSH_EXTRA_OPTS:=}"
 : "${CEMENTBOX_FINAL_BWRAP_PREFIX:=}"
+[[ -n "${FINAL_SSH_EXTRA_OPTS:-}" ]] && echo >&2 \
+  "cementbox: FINAL_SSH_EXTRA_OPTS is deprecated," \
+  "use CEMENTBOX_FINAL_SSH_EXTRA_OPTS"
+: "${CEMENTBOX_FINAL_SSH_EXTRA_OPTS:=${FINAL_SSH_EXTRA_OPTS:-}}"
 REMOTE_MNT='~/.remote-'$$
 
 CUSTOM_SHARES=(); BWRAP_OPTIONS=()
@@ -111,7 +115,7 @@ $SSH "$SSH_DESTINATION" "
 
 REQUOTED_ARGS=$(printf '%q ' "$@")
 set +e
-$SSH ${FINAL_SSH_EXTRA_OPTS:+"$FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
+$SSH ${CEMENTBOX_FINAL_SSH_EXTRA_OPTS:+"$CEMENTBOX_FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
   "${CEMENTBOX_FINAL_BWRAP_PREFIX:+${CEMENTBOX_FINAL_BWRAP_PREFIX} }bwrap --dev-bind / / ${BWRAP_OPTIONS[*]} -- $REQUOTED_ARGS"
 ssh_retcode=$?
 kill $socat_pid 2>/dev/null
