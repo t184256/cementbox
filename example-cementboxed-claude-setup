@@ -96,9 +96,7 @@ GCREPO
 
   [[ -e /etc/profile.d/claude.sh ]] || \
     run0 tee /etc/profile.d/claude.sh << 'CLAUDEENV'
-export CLAUDE_CODE_USE_VERTEX=1
-export CLOUD_ML_REGION=us-east5
-export ANTHROPIC_VERTEX_PROJECT_ID=itpc-gcp-core-pe-eng-claude
+if [[ -e ~/.claude/env ]]; then . ~/.claude/env; fi
 CLAUDEENV
 
   if [[ ! -e ~/.git/config ]]; then
