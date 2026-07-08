@@ -115,8 +115,12 @@ $SSH "$SSH_DESTINATION" "
 
 REQUOTED_ARGS=$(printf '%q ' "$@")
 set +e
-$SSH ${CEMENTBOX_FINAL_SSH_EXTRA_OPTS:+"$CEMENTBOX_FINAL_SSH_EXTRA_OPTS"} "$SSH_DESTINATION" \
-  "${CEMENTBOX_FINAL_BWRAP_PREFIX:+${CEMENTBOX_FINAL_BWRAP_PREFIX} }bwrap --dev-bind / / ${BWRAP_OPTIONS[*]} -- $REQUOTED_ARGS"
+$SSH \
+  ${CEMENTBOX_FINAL_SSH_EXTRA_OPTS:+"$CEMENTBOX_FINAL_SSH_EXTRA_OPTS"} \
+  "$SSH_DESTINATION" \
+  "${CEMENTBOX_FINAL_BWRAP_PREFIX:+${CEMENTBOX_FINAL_BWRAP_PREFIX} }\
+   bwrap --unshare-user-try --dev-bind / / ${BWRAP_OPTIONS[*]} \
+         -- $REQUOTED_ARGS"
 ssh_retcode=$?
 kill $socat_pid 2>/dev/null
 wait $socat_pid 2>/dev/null
